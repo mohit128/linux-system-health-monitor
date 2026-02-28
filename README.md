@@ -4,11 +4,6 @@ linux-system-health-monitor
 
 ---
 
-Perfect 👍 since you finally moved to **cron instead of systemd timer**, we’ll update the README properly so it reflects the real implementation.
-
-Below is your **final GitHub-ready README.md (cron-based version)** 👇
-
----
 
 # 🖥️ Linux System Health Monitoring (Production-Style)
 
