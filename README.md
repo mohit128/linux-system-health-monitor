@@ -4,105 +4,141 @@ linux-system-health-monitor
 
 ---
 
-# 🖥️ Linux System Health Monitoring (Production-Style)
+Perfect 👍 since you finally moved to **cron instead of systemd timer**, we’ll update the README properly so it reflects the real implementation.
 
-A **production-inspired system health monitoring solution** built on **Rocky Linux** using **Bash, systemd timers, Telegram, and Email alerts**.
-
-This project focuses on **alert quality, severity-based routing, and noise reduction**, instead of basic “print everything” scripts.
+Below is your **final GitHub-ready README.md (cron-based version)** 👇
 
 ---
 
-## 🎯 Project Goals
+# 🖥️ Linux System Health Monitoring (Production-Style)
+
+A production-inspired Linux system health monitoring solution built on **Rocky Linux** using:
+
+* 🐚 Bash
+* ⏰ Cron Job Scheduler
+* 📱 Telegram Bot API
+* 📧 Postfix (Gmail SMTP relay)
+
+This project focuses on **alert quality, severity-based routing, state transitions, and noise reduction**, instead of basic monitoring scripts that spam alerts.
+
+---
+
+# 🎯 Project Objectives
 
 Most beginner monitoring scripts:
 
-* Spam alerts
-* Alert for non-critical issues
-* Rely only on cron
-* Become ignored over time
+* ❌ Send repeated alerts
+* ❌ Do not classify severity
+* ❌ Ignore state transitions
+* ❌ Cause alert fatigue
 
-This project was built to:
+This project was designed to:
 
-* Send **alerts only when action is required**
-* Separate **CRITICAL vs WARNING** conditions
-* Use **Telegram for real-time incidents**
-* Use **Email as an audit trail**
-* Run reliably using **systemd timers**
+* ✅ Send alerts only when required
+* ✅ Separate **CRITICAL / WARNING / OK** states
+* ✅ Send Telegram alerts for real-time incidents
+* ✅ Use Email as an audit trail
+* ✅ Detect recovery events
+* ✅ Prevent duplicate alerts
+* ✅ Run automatically using cron
 
 ---
 
-## 🔧 Features
+# 🔧 Features
 
 * ✅ Disk usage monitoring
 * ✅ Memory usage monitoring
 * ✅ Load average monitoring
-* 🚨 **CRITICAL alerts → Telegram group**
-* 📧 **Email alerts (rate-limited to once per hour)**
-* 📊 `df -h` output attached in email
+* 🚨 Telegram alerts (CRITICAL only)
+* 📧 Email alerts via Postfix (rate-limited to once per hour)
+* 📊 `df -h` output included in email
 * 🔐 Secure secrets handling (no hardcoded tokens)
-* ⏱️ Uses **systemd timers** instead of cron
-* 📉 Prevents alert fatigue
+* 📉 Alert fatigue prevention using state tracking
+* ⏰ Automated execution via cron
 
 ---
 
-## 🧠 Alert Design Logic
+# 🧠 Alert Design Logic
 
-| Severity | Action               |
-| -------- | -------------------- |
-| OK       | No alert             |
-| WARNING  | Email (rate-limited) |
-| CRITICAL | Telegram + Email     |
-
-Telegram is used for **instant incident visibility**, while email is used for **logging and reporting**.
-
----
-
-## 🧩 Script Overview
-
-The script classifies system state into two buckets:
+The script dynamically classifies system state:
 
 ```bash
 CRITICAL=""
 WARNING=""
 ```
 
-Example logic:
+### Example Disk Logic
 
 ```bash
-if (( DISK >= 85 )); then
-  CRITICAL+="Disk usage CRITICAL: ${DISK}%\n"
-elif (( DISK >= 75 )); then
-  WARNING+="Disk usage WARNING: ${DISK}%\n"
+if (( DISK >= DISK_CRIT )); then
+  CRITICAL+="❌ Disk CRITICAL: ${DISK}%\n"
+elif (( DISK >= DISK_WARN )); then
+  WARNING+="⚠ Disk WARNING: ${DISK}%\n"
 fi
 ```
 
-This approach makes the script:
+---
 
-* Easy to extend
-* Easy to route alerts
-* Similar to real monitoring tools
+# 🔄 State-Based Alerting
+
+The script tracks previous system state using:
+
+```
+/var/tmp/system_health_state
+```
+
+Example:
+
+```bash
+STATE_FILE="/var/tmp/system_health_state"
+PREV_STATE=$(cat "$STATE_FILE" 2>/dev/null || echo "OK")
+```
+
+### State Transition Behavior
+
+| Previous            | Current            | Action |
+| ------------------- | ------------------ | ------ |
+| OK → CRITICAL       | Telegram + Email   |        |
+| CRITICAL → OK       | Recovery Email     |        |
+| CRITICAL → CRITICAL | No duplicate alert |        |
+| WARNING → WARNING   | No duplicate alert |        |
+
+This ensures:
+
+* No Telegram spam
+* Alerts only on meaningful transitions
+* Recovery detection
 
 ---
 
-## 📱 Telegram Alerts (CRITICAL Only)
+# 📱 Telegram Alerts (CRITICAL Only)
 
-Telegram is used for real-time alerts via a bot.
+Telegram is used for real-time alerting.
 
 ```bash
 send_telegram() {
   curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
     -d chat_id="${TG_CHAT_ID}" \
-    -d text="$1"
+    --data-urlencode text="$1"
 }
 ```
 
-Telegram messages are sent **only for CRITICAL conditions**.
+Telegram triggers only when entering a new CRITICAL state.
 
 ---
 
-## 📧 Email Alerts (Rate-Limited)
+# 📧 Email Alerts (Postfix Gmail Relay)
 
-To avoid alert spam, email alerts are limited to **once per hour** using a timestamp file:
+This project uses **Postfix configured as a Gmail SMTP relay**.
+
+### Why Postfix?
+
+* Production-grade MTA
+* SMTP retry support
+* Reliable queue handling
+* System-integrated mail service
+
+### Email Rate Limiting
 
 ```bash
 MAIL_RATE_FILE="/var/tmp/last_health_mail"
@@ -113,24 +149,33 @@ Emails include:
 
 * CRITICAL issues
 * WARNING issues
-* `df -h` output for context
+* Hostname & timestamp
+* Full `df -h` output
+
+Example:
+
+```bash
+} | mail -s "🚨 System Health Alert on $HOST" "$MAIL_TO"
+```
 
 ---
 
-## 🔐 Secure Secrets Handling
+# 🔐 Secure Secrets Handling
 
-Secrets are stored outside the script:
+Telegram credentials are stored outside the script:
 
-```bash
+```
 ~/.tg_secrets
 ```
+
+Example:
 
 ```bash
 TG_BOT_TOKEN="YOUR_BOT_TOKEN"
 TG_CHAT_ID="-100XXXXXXXXXX"
 ```
 
-Permissions:
+Set permissions:
 
 ```bash
 chmod 600 ~/.tg_secrets
@@ -138,106 +183,156 @@ chmod 600 ~/.tg_secrets
 
 ---
 
-## ⏱️ Scheduling with systemd Timer
+# ⏰ Automation Using Cron
 
-Instead of cron, this project uses a **systemd timer** for better reliability.
+The script runs automatically using a cron job.
 
-### system-health.timer
+### Example: Run Every 5 Minutes
 
-```ini
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=5min
-Persistent=true
+```bash
+crontab -e
 ```
 
-Benefits:
+Add:
 
-* Survives reboots
-* Integrated logging
-* Better error visibility
+```bash
+*/5 * * * * /usr/local/bin/system_health.sh >> /var/log/system_health.log 2>&1
+```
+
+### Benefits
+
+* Lightweight
+* Simple to configure
+* Works on all Linux distributions
+* Easy log tracking
 
 ---
 
-## 🚀 Installation & Usage
+# 🏗️ Architecture Flow
 
-### 1️⃣ Clone the repo
+```
+cron (every 5 min)
+        ↓
+system_health.sh
+        ↓
+Evaluate Disk / Memory / Load
+        ↓
+Determine State (OK / WARNING / CRITICAL)
+        ↓
+Telegram (CRITICAL only)
+        ↓
+Postfix Email (rate-limited)
+        ↓
+Update state file
+```
+
+---
+
+# 🚀 Installation Guide
+
+## 1️⃣ Clone Repository
 
 ```bash
 git clone https://github.com/yourusername/linux-system-health-monitor.git
 cd linux-system-health-monitor
 ```
 
-### 2️⃣ Install dependencies
+---
+
+## 2️⃣ Install Dependencies
 
 ```bash
-sudo dnf install -y bc curl msmtp
+sudo dnf install -y bc curl postfix mailx
 ```
 
-### 3️⃣ Configure secrets
+---
+
+## 3️⃣ Configure Postfix (Gmail Relay)
+
+Edit:
+
+```
+/etc/postfix/main.cf
+```
+
+Configure Gmail SMTP relay with App Password.
+
+Restart:
+
+```bash
+sudo systemctl restart postfix
+```
+
+---
+
+## 4️⃣ Configure Telegram Secrets
 
 ```bash
 nano ~/.tg_secrets
 chmod 600 ~/.tg_secrets
 ```
 
-### 4️⃣ Install script
+---
+
+## 5️⃣ Install Script
 
 ```bash
 sudo cp system_health.sh /usr/local/bin/
 sudo chmod +x /usr/local/bin/system_health.sh
 ```
 
-### 5️⃣ Enable systemd timer
+---
+
+## 6️⃣ Configure Cron
 
 ```bash
-sudo cp system-health.service /etc/systemd/system/
-sudo cp system-health.timer /etc/systemd/system/
+crontab -e
+```
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now system-health.timer
+Add:
+
+```bash
+*/5 * * * * /usr/local/bin/system_health.sh >> /var/log/system_health.log 2>&1
 ```
 
 ---
 
-## 🧪 Testing
+# 🧪 Testing
 
 To test alerts safely:
 
-* Temporarily force a CRITICAL value inside the script
-* Run the script manually
-* Verify Telegram + Email delivery
+1. Temporarily lower threshold values
+2. Run script manually
+3. Verify Telegram + Email delivery
+4. Restore thresholds
 
 ---
 
-## 📚 Learning Outcomes
+# 📚 Learning Outcomes
 
-This project helped reinforce:
+This project demonstrates:
 
+* Production-style alert design
 * Bash scripting best practices
-* Linux system monitoring fundamentals
+* State-based monitoring logic
+* SMTP relay configuration with Postfix
+* Cron automation
 * Alert fatigue prevention
-* systemd timers vs cron
 * Secure secret management
-* Production-style thinking
 
 ---
 
-## 🔮 Possible Improvements
+# 🔮 Future Improvements
 
 * CPU temperature monitoring
 * Network latency checks
-* Prometheus-style metrics output
+* Multi-mount disk monitoring
+* Prometheus-compatible metrics
 * Ansible role packaging
-* Kubernetes node monitoring
+* Docker container version
 
 ---
 
-## 📌 Disclaimer
-
-This project is intended for **learning and demonstration purposes**, inspired by real production monitoring patterns.
-
----
 
 ## 🤝 Contributions
 
